@@ -66,6 +66,8 @@ services:
 
 volumes:
   pgdata:
+    external: true
+    name: orchestrator_pgdata
 
 networks:
   orquestio-net:
