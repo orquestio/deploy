@@ -36,7 +36,7 @@ Mnemonic: *if the script runs **once** when the host is created → `infrastruct
 
 ```
 deploy/
-├── docker-compose.yml      # references ghcr.io/orquestio/orchestrator:<tag>
+├── docker-compose.yml      # references 256014692049.dkr.ecr.us-east-1.amazonaws.com/orchestrator:<tag>
 ├── nginx/nginx.conf        # reverse proxy config
 ├── init-env.sh             # secret puller: SSM → .env
 ├── sql-bootstrap/          # mounted at /docker-entrypoint-initdb.d/
@@ -55,8 +55,8 @@ Semver tags. The orchestrator image tag pinned in `docker-compose.yml` is update
 To bump:
 
 1. Push a `v*` tag in `orquestio/orchestrator`.
-2. Wait for the `release.yml` workflow to publish `ghcr.io/orquestio/orchestrator:<tag>`.
-3. Verify `gh api /orgs/orquestio/packages/container/orchestrator/versions` lists the tag.
+2. Wait for the `release.yml` workflow to publish `256014692049.dkr.ecr.us-east-1.amazonaws.com/orchestrator:<tag>`. The workflow authenticates to AWS via OIDC (no long-lived AWS keys in GH secrets); see `orquestio/orchestrator/.github/workflows/release.yml` and IAM role `orquestio-gha-ecr-push`.
+3. Verify `aws ecr describe-images --repository-name orchestrator --region us-east-1` lists the tag.
 4. PR here updating the `image:` line.
 
 ## Procedimiento de deploy (prod EC2 `i-0fc23a55a77a63c8e`)
@@ -66,7 +66,8 @@ Ejecutar vía SSM Session Manager (puerto 22 cerrado por seguridad — ver `infr
 ### Pre-requisitos por host
 
 - Docker + docker compose plugin instalados (cloud-init en `infrastructure/`).
-- PAT GHCR pull-only en SSM `/orquestio/prod/GHCR_PULL_TOKEN` (mismo patrón que `DOCKERHUB_TOKEN`).
+- AWS CLI instalado (cloud-init).
+- Instance profile `orquestio-orchestrator-profile` con la inline policy `ecr-pull-orchestrator` (`ecr:GetAuthorizationToken` global + `BatchCheckLayerAvailability/BatchGetImage/GetDownloadUrlForLayer` sobre el repo `orchestrator`). Ya aplicada — no requiere PAT ni secret manual.
 - Clone de este repo en `/opt/orquestio/deploy/`.
 
 ### Deploy normal
@@ -78,11 +79,10 @@ git pull
 # Refrescar .env desde SSM (variables nuevas, rotación de secrets, etc.)
 ./init-env.sh prod
 
-# Login a GHCR (usa el PAT de SSM; sólo necesario la primera vez por host
-# o si rota el token).
-GHCR_TOKEN=$(aws ssm get-parameter --name /orquestio/prod/GHCR_PULL_TOKEN \
-  --with-decryption --query 'Parameter.Value' --output text)
-echo "$GHCR_TOKEN" | sudo docker login ghcr.io -u orquestio-bot --password-stdin
+# Login a ECR (token efímero de 12h vía instance profile, sin PAT).
+# Re-ejecutar antes de cada `compose pull` si pasaron >12h desde el login anterior.
+aws ecr get-login-password --region us-east-1 | \
+  sudo docker login --username AWS --password-stdin 256014692049.dkr.ecr.us-east-1.amazonaws.com
 
 # Pull de la imagen del tag pineado en docker-compose.yml
 sudo docker compose pull
@@ -97,7 +97,7 @@ curl -s http://localhost:8000/health
 
 ## Procedimiento de ROLLBACK
 
-> Si la imagen GHCR no funciona en producción tras el cutover.
+> Si la imagen ECR no funciona en producción tras el cutover.
 
 ```bash
 # 1. SSM al EC2 i-0fc23a55a77a63c8e
@@ -111,7 +111,7 @@ git checkout pre-awac-cutover
 cd /opt/orquestio/deploy
 sudo docker compose down
 
-# 4. Levantar el stack viejo (build local, sin GHCR)
+# 4. Levantar el stack viejo (build local, sin registry)
 cd /opt/orquestio/orchestrator
 sudo docker compose up -d --build
 
