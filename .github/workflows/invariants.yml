@@ -1,0 +1,71 @@
+name: invariants
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  pgdata-external:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "pgdata must be external (prevent v27-style data-loss near-miss)"
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import sys, re, yaml
+          with open('docker-compose.yml') as f:
+              compose = yaml.safe_load(f)
+
+          vols = compose.get('volumes') or {}
+          pg = vols.get('pgdata')
+          if pg is None:
+              print("FAIL: top-level volume `pgdata` missing from compose", file=sys.stderr)
+              sys.exit(1)
+
+          # Accept either `external: true` (with sibling `name:`) or the legacy
+          # form `external: { name: ... }`. Reject anonymous/empty volume.
+          external = pg.get('external') if isinstance(pg, dict) else None
+          if not external:
+              print(
+                  "FAIL: volume `pgdata` must declare `external: true` and reference\n"
+                  "      the existing Docker volume `orchestrator_pgdata`. Otherwise\n"
+                  "      a stack moved to a different directory will create a fresh\n"
+                  "      volume and the bootstrap SQL will run against it, hiding\n"
+                  "      data loss behind a green /health (the v27 near-miss).",
+                  file=sys.stderr)
+              sys.exit(1)
+
+          name = pg.get('name') if isinstance(pg, dict) else None
+          if isinstance(external, dict):
+              name = name or external.get('name')
+          if name != 'orchestrator_pgdata':
+              print(
+                  f"FAIL: pgdata.name must be 'orchestrator_pgdata' (got {name!r}).\n"
+                  "      That is the volume created by the legacy compose project\n"
+                  "      and currently the single source of truth for prod data.",
+                  file=sys.stderr)
+              sys.exit(1)
+
+          print("OK: pgdata is external -> orchestrator_pgdata")
+          PY
+
+      - name: "image must pin a v* tag, never :latest or floating"
+        run: |
+          set -euo pipefail
+          api_image=$(grep -E '^\s*image:\s*256014692049\.dkr\.ecr\.us-east-1\.amazonaws\.com/orchestrator:' docker-compose.yml | head -1 | awk -F: '{print $NF}')
+          if [ -z "$api_image" ]; then
+            echo "FAIL: api service must reference image: 256014692049.dkr.ecr.us-east-1.amazonaws.com/orchestrator:<tag>" >&2
+            exit 1
+          fi
+          if [ "$api_image" = "latest" ]; then
+            echo "FAIL: never pin :latest — every tag is immutable in ECR, use vX.Y.Z" >&2
+            exit 1
+          fi
+          if ! echo "$api_image" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "FAIL: orchestrator image tag must match v<major>.<minor>.<patch> (got: $api_image)" >&2
+            exit 1
+          fi
+          echo "OK: orchestrator pinned to $api_image"
