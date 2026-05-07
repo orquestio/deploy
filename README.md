@@ -68,7 +68,8 @@ Ejecutar vía SSM Session Manager (puerto 22 cerrado por seguridad — ver `infr
 - Docker + docker compose plugin instalados (cloud-init en `infrastructure/`).
 - AWS CLI instalado (cloud-init).
 - Instance profile `orquestio-orchestrator-profile` con la inline policy `ecr-pull-orchestrator` (`ecr:GetAuthorizationToken` global + `BatchCheckLayerAvailability/BatchGetImage/GetDownloadUrlForLayer` sobre el repo `orchestrator`). Ya aplicada — no requiere PAT ni secret manual.
-- Clone de este repo en `/opt/orquestio/deploy/`.
+- Clone (o tarball-extracted snapshot) de este repo en `/opt/orquestio/deploy/`.
+- Volume Docker existente `orchestrator_pgdata` (data del stack legacy) — referenciado como `external` en `docker-compose.yml` para que el cutover ECR no genere una DB vacía. Ver bloque `volumes:` al final del compose.
 
 ### Deploy normal
 
