@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: pgdata must be external (prevent v27-style data-loss near-miss)
+      - name: "pgdata must be external (prevent v27-style data-loss near-miss)"
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -52,7 +52,7 @@ jobs:
           print("OK: pgdata is external -> orchestrator_pgdata")
           PY
 
-      - name: image: must pin a v* tag, never :latest or floating
+      - name: "image must pin a v* tag, never :latest or floating"
         run: |
           set -euo pipefail
           api_image=$(grep -E '^\s*image:\s*256014692049\.dkr\.ecr\.us-east-1\.amazonaws\.com/orchestrator:' docker-compose.yml | head -1 | awk -F: '{print $NF}')
