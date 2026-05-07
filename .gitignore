@@ -1,0 +1,13 @@
+# Local environment files (never commit)
+.env
+.env.local
+*.env
+
+# Pulled secrets (re-fetched on deploy)
+secrets/
+*.pem
+*.key
+
+# OS
+.DS_Store
+Thumbs.db
