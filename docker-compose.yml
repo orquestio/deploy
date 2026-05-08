@@ -1,6 +1,6 @@
 services:
   api:
-    image: 256014692049.dkr.ecr.us-east-1.amazonaws.com/orchestrator:v0.2.1
+    image: 256014692049.dkr.ecr.us-east-1.amazonaws.com/orchestrator:v0.2.2
     container_name: orquestio-api
     restart: unless-stopped
     ports:
